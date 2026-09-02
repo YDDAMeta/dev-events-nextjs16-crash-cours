@@ -1,61 +1,75 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
-// Define the connection cache type
-type MongooseCache = {
+/**
+ * Type décrivant la structure de notre cache de connexion.
+ * - conn: l'instance de connexion Mongoose une fois établie
+ * - promise: la promesse de connexion en cours, pour éviter les connexions concurrentes
+ */
+interface MongooseCache {
     conn: typeof mongoose | null;
     promise: Promise<typeof mongoose> | null;
-};
-
-// Extend the global object to include our mongoose cache
-declare global {
-    // eslint-disable-next-line no-var
-    var mongoose: MongooseCache | undefined;
-}
-
-const MONGODB_URI = process.env.MONGODB_URI;
-
-
-// Initialize the cache on the global object to persist across hot reloads in development
-let cached: MongooseCache = global.mongoose || { conn: null, promise: null };
-
-if (!global.mongoose) {
-    global.mongoose = cached;
 }
 
 /**
- * Establishes a connection to MongoDB using Mongoose.
- * Caches the connection to prevent multiple connections during development hot reloads.
- * @returns Promise resolving to the Mongoose instance
+ * En développement, Next.js recharge les modules à chaque changement de fichier (HMR),
+ * ce qui recréerait une nouvelle connexion MongoDB à chaque fois si on ne la stocke pas
+ * quelque part de persistant entre les rechargements.
+ * On utilise donc l'objet global de Node.js pour stocker le cache.
+ */
+declare global {
+    // eslint-disable-next-line no-var
+    var mongooseCache: MongooseCache | undefined;
+}
+
+// Initialise le cache global s'il n'existe pas encore
+const cached: MongooseCache = global.mongooseCache ?? {
+    conn: null,
+    promise: null,
+};
+
+if (!global.mongooseCache) {
+    global.mongooseCache = cached;
+}
+
+/**
+ * Établit (ou réutilise) une connexion à MongoDB via Mongoose.
+ * Retourne toujours la même instance de connexion tant qu'elle reste active,
+ * ce qui évite de multiplier les connexions inutilement.
+ *
+ * La validation de MONGODB_URI est faite ici (et non au niveau du module)
+ * pour que l'import de ce fichier ne fasse jamais planter l'app dans un
+ * contexte sans variable d'environnement (build, tests, etc.). L'erreur
+ * n'apparaît que si on tente réellement de se connecter.
  */
 async function connectDB(): Promise<typeof mongoose> {
-    // Return existing connection if available
+    // Si une connexion existe déjà en cache, on la réutilise directement
     if (cached.conn) {
         return cached.conn;
     }
 
-    // Return existing connection promise if one is in progress
+    const MONGODB_URI = process.env.MONGODB_URI;
+
+    if (!MONGODB_URI) {
+        throw new Error(
+            "Please define the MONGODB_URI environment variable inside .env.local"
+        );
+    }
+
+    // Si aucune connexion n'est en cours d'établissement, on en démarre une
     if (!cached.promise) {
-        // Validate MongoDB URI exists
-        if (!MONGODB_URI) {
-            throw new Error(
-                'Please define the MONGODB_URI environment variable inside .env.local'
-            );
-        }
-        const options = {
-            bufferCommands: false, // Disable Mongoose buffering
+        const opts = {
+            bufferCommands: false, // désactive le buffering des commandes tant que la connexion n'est pas prête
         };
 
-        // Create a new connection promise
-        cached.promise = mongoose.connect(MONGODB_URI!, options).then((mongoose) => {
-            return mongoose;
-        });
+        cached.promise = mongoose
+            .connect(MONGODB_URI, opts)
+            .then((mongooseInstance) => mongooseInstance);
     }
 
     try {
-        // Wait for the connection to establish
         cached.conn = await cached.promise;
     } catch (error) {
-        // Reset promise on error to allow retry
+        // En cas d'échec, on réinitialise la promesse pour permettre une nouvelle tentative
         cached.promise = null;
         throw error;
     }
