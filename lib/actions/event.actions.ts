@@ -24,3 +24,12 @@ export const getSimilarEventsBySlug = async (slug: string) => {
         return [];
     }
 }
+
+export const getAllEvents = async () => {
+    try {
+        await connectDB();
+        return await Event.find().sort({ createdAt: -1 }).lean();
+    } catch {
+        return [];
+    }
+}

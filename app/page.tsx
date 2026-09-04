@@ -2,15 +2,14 @@ import ExploreBtn from '@/components/ExplorerBtn';
 import EventCard from "@/components/EventCard";
 import { IEvent } from "@/database";
 import { cacheLife } from "next/cache";
+import { getAllEvents } from "@/lib/actions/event.actions";
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL;
 
 const Page = async () => {
  'use cache'
 cacheLife('hours')
-    const response = await fetch(`${BASE_URL}/api/events`);
-    const { events } = await response.json();
-
+    const events: IEvent[] = await getAllEvents();
     return (
         <section>
             <h1 className="text-center">The hub for Every dev <br/> Event You can't Miss</h1>
@@ -22,8 +21,16 @@ cacheLife('hours')
                 <h3>Feature Events</h3>
                 <ul className="events list-none">
                     {events && events.length > 0 && events.map((event: IEvent) => (
-                        <li key={event.title}>
-                            <EventCard {...event} type="feature" />
+                        <li key={event.slug}>
+                            <EventCard
+                                title={event.title}
+                                image={event.image}
+                                slug={event.slug}
+                                location={event.location}
+                                date={event.date}
+                                time={event.time}
+                                type="feature"
+                            />
                         </li>
                     ))}
                 </ul>
