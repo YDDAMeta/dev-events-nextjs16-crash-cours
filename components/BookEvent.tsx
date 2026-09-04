@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createBooking } from '@/lib/actions/booking.action';
+import posthog from 'posthog-js';
 
 interface BookEventProps {
     eventId: string;
@@ -22,12 +23,22 @@ const BookEvent = ({ eventId, slug }: BookEventProps) => {
         try {
             await createBooking({ eventId, slug, email });
             setSubmitted(true);
+            if(
+                process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN &&
+                process.env.NEXT_PUBLIC_POSTHOG_HOST
+            ){
+                posthog.capture('event_booked', {
+                    event_id: eventId,
+                    event_slug: slug,
+                });
+
+            }
         } catch (err) {
             setError('Something went wrong. Please try again.');
         } finally {
             setLoading(false);
         }
-    };
+    }
 
     return (
         <div id="book-event">
